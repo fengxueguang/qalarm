@@ -22,7 +22,8 @@ type qalarm struct {
 	script     string // 错误脚本名字
 	countType  string // 错误类型  "inc"  "set"
 	time       int64  // 时间
-	debug      bool
+	debug      bool   // 调试模式 会打印出来很多的相关的信息,默认是关
+	log_errors bool   // 记录错误开关 默认是开
 }
 
 type messageCount struct {
@@ -101,6 +102,7 @@ func NewQalarm(pid, mid, code int, message string, params ...map[string]interfac
 	script := getMapStringVal(mergeParams, "script", "")
 	countType := getMapStringVal(mergeParams, "countType", "inc")
 	debug := getMapBoolVal(mergeParams, "debug", false)
+	log_errors := getMapBoolVal(mergeParams, "log_errors", true)
 	if len(serverName) == 0 {
 		serverName, _ = os.Hostname()
 	}
@@ -108,7 +110,7 @@ func NewQalarm(pid, mid, code int, message string, params ...map[string]interfac
 		_, script2, _, _ := runtime.Caller(1)
 		script = script2
 	}
-	return &qalarm{pid: pid, mid: mid, code: code, count: count, message: message, serverName: serverName, clientIp: clientIp, script: script, countType: countType, debug: debug}
+	return &qalarm{pid: pid, mid: mid, code: code, count: count, message: message, serverName: serverName, clientIp: clientIp, script: script, countType: countType, debug: debug,log_errors,log_errors}
 }
 
 /**
@@ -143,7 +145,7 @@ func (this *qalarm) Send() (bool, error) {
 			msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
 			con, err := json.Marshal(msgc)
 			if err != nil {
-				this.println("json失败:", err)
+				this.log("json 失败:", msgc, " err:", err.Error())
 				return false, err
 			}
 			this.println("msgc1:json之后的内容是 ", string(con))
@@ -153,7 +155,7 @@ func (this *qalarm) Send() (bool, error) {
 			msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
 			con, err := json.Marshal(msgc)
 			if err != nil {
-				this.println("json失败:", err)
+				this.log("json 失败:", msgc, " err:", err.Error())
 				return false, err
 			}
 			this.println("msgc1:json之后的内容是 ", string(con))
@@ -171,7 +173,7 @@ func (this *qalarm) Send() (bool, error) {
 			msgc := map[string]interface{}{"c": count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
 			con, err := json.Marshal(msgc)
 			if err != nil {
-				this.println("json失败:", err)
+				this.log("json 失败:", msgc, " err:", err.Error())
 				return false, err
 			}
 			this.println("msgc1:json之后的内容是 ", string(con))
@@ -188,7 +190,7 @@ func (this *qalarm) Send() (bool, error) {
 		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
 		con, err := json.Marshal(msgc)
 		if err != nil {
-			this.println("json失败:", err)
+			this.log("json 失败:", msgc, " err:", err.Error())
 			return false, err
 		}
 		this.println("msgc:json之后的内容是 ", string(con))
@@ -199,7 +201,7 @@ func (this *qalarm) Send() (bool, error) {
 		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "ty": this.countType, "v": version}
 		con, err := json.Marshal(msgc)
 		if err != nil {
-			this.println("json失败:", err)
+			this.log("json 失败:", msgc, " err:", err.Error())
 			return false, err
 		}
 		this.println("msgc:json之后的内容是 ", string(con))
@@ -213,7 +215,7 @@ func (this *qalarm) Send() (bool, error) {
 	msgall := map[string]interface{}{"time": time.Now().Format("2006-01-02 15:04:05"), "pid": this.pid, "mid": this.mid, "code": this.code, "message": this.message, "server_ip": this.serverName, "client_ip": this.clientIp, "script": this.script}
 	conall, err := json.Marshal(msgall)
 	if err != nil {
-		this.println("json失败:", err)
+		this.log("json 失败:", msgall, " err:", err.Error())
 		return false, err
 	}
 	this.writeAllLog("\n" + string(conall))
@@ -225,7 +227,7 @@ func (this *qalarm) Send() (bool, error) {
 			msgall = map[string]interface{}{"time": time.Now().Format("2006-01-02 15:04:05"), "pid": this.pid, "mid": this.mid, "code": this.code, "message": this.message, "server_ip": this.serverName, "client_ip": this.clientIp, "script": this.script}
 			conall, err = json.Marshal(msgall)
 			if err != nil {
-				this.println("json失败:", err)
+				this.log("json 失败:", msgall, " err:", err.Error())
 				return false, err
 			}
 		}
@@ -262,11 +264,14 @@ func (this *qalarm) writeMsg(path, fileName, content string) (bool, error) {
 	filePath := log_dir + path
 	fileExists, err := this.pathExists(filePath)
 	if err != nil {
+		this.log("打开文件失败:", " file:", filePath, " err:", err.Error())
 		return false, err
 	}
 	if !fileExists {
 		err := os.MkdirAll(filePath, perm)
 		if err != nil {
+			this.log("创建目录失败:", " path:", filePath, " err:",
+				err.Error())
 			return false, err
 		}
 	}
@@ -280,6 +285,7 @@ func (this *qalarm) pathExists(path string) (bool, error) {
 		return true, nil
 	}
 	if os.IsNotExist(err) {
+		this.log("获取路径信息失败:", " path:", path, " err:", err.Error())
 		return false, nil
 	}
 	return false, err
@@ -342,6 +348,13 @@ func (this *qalarm) println(arr ...interface{}) {
 	}
 }
 
+func (this *qalarm) log(params ...interface{}) {
+	this.println(params...)
+	if this.log_errors{
+		con, _ := json.Marshal(params)
+		this.writeFile(log_dir + "error.log", string(con), true)
+	}
+}
 //  用法   qalarm.NewQalarm(pit,mid,code,message,map[string]interface{}{"count":1,"countType":"inc","serverName":"dev01.add.sjbs.xxx.com"}).Send()
 
 //func main() {
