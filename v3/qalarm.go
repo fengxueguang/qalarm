@@ -84,7 +84,7 @@ func getMapBoolVal(params map[string]interface{}, key string, defaultVal bool) (
 
 /**
 	构造函数
-	NewQalarm(9,1,111,"error message",map[string]interface{}{"pid":1,"mid":3,"code":1232,"message:"我是错误信息"}).Send()
+	NewQalarm(9,1,111,"error message").Send()
 */
 func NewQalarm(pid, mid, code int, message string, params ...map[string]interface{}) *qalarm {
 	mergeParams := map[string]interface{}{}
@@ -342,7 +342,7 @@ func (this *qalarm) println(arr ...interface{}) {
 	}
 }
 
-//  用法   qalarm.NewQalarm(pit,mid,code,message,map[string]interface{}{"Count":1,"CountType":"inc","ServerName":"dev01.add.sjbs.xxx.com"}).Send()
+//  用法   qalarm.NewQalarm(pit,mid,code,message,map[string]interface{}{"count":1,"countType":"inc","serverName":"dev01.add.sjbs.xxx.com"}).Send()
 
 //func main() {
 //times := 1
