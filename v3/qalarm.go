@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	//"strconv"
 )
 
 type qalarm struct {
@@ -27,22 +28,22 @@ type qalarm struct {
 }
 
 type messageCount struct {
-	c  int    `json:"c"` // 项目id
-	m  string `json:"m"`
-	t  int64  `json:"t"` // 时间
-	k  string `json:"k"`
-	ip string `json:"ip"`
-	ty string `json:"ty"`
-	v  string `json:"v"`
+	C  int    `json:"c"` // 项目id
+	M  string `json:"m"`
+	T  int64  `json:"t"` // 时间
+	K  string `json:"k"`
+	Ip string `json:"ip"`
+	Ty string `json:"ty"`
+	V  string `json:"v"`
 }
 
 const (
-	log_dir       = "/home/q/php/Qalarm/logs/"
+	log_dir = "/home/q/php/Qalarm/logs/"
 	agent_log_dir = "/home/q/php/Qalarm/logs/wonderagent/"
-	c_file        = "qalarm.c." // 次数文件
-	m_file        = "qalarm.m." // 详细错误文件
-	version       = "3.0"
-	perm          = 0777
+	c_file = "qalarm.c." // 次数文件
+	m_file = "qalarm.m." // 详细错误文件
+	version = "3.0"
+	perm = 0777
 )
 
 func getMapIntVal(params map[string]interface{}, key string, defaultVal int) (mapval int) {
@@ -110,7 +111,7 @@ func NewQalarm(pid, mid, code int, message string, params ...map[string]interfac
 		_, script2, _, _ := runtime.Caller(1)
 		script = script2
 	}
-	return &qalarm{pid: pid, mid: mid, code: code, count: count, message: message, serverName: serverName, clientIp: clientIp, script: script, countType: countType, debug: debug,log_errors,log_errors}
+	return &qalarm{pid: pid, mid: mid, code: code, count: count, message: message, serverName: serverName, clientIp: clientIp, script: script, countType: countType, debug: debug, log_errors: log_errors}
 }
 
 /**
@@ -134,79 +135,68 @@ func (this *qalarm) Send() (bool, error) {
 	this.println("rs:", rs)
 
 	var msg messageCount
-	json.Unmarshal([]byte(rs), &msg)
+	err := json.Unmarshal([]byte(rs), &msg)
+	if err !=nil{
+		this.log(err.Error())
+	}
 	sync_m := true
+
+	this.println("msg:", msg.C, msg.T, msg.Ip, msg.K, msg.M)
+	var diff int64
 	if len(rs) > 0 {
-		this.println("msg:", msg.c, msg.t, msg.ip, msg.k, msg.m)
-		diff := ts - msg.t
-		this.println("diff:", diff)
-		this.println("diff:", diff)
-		if diff >= 1 && diff <= 5 {
-			msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
-			con, err := json.Marshal(msgc)
-			if err != nil {
-				this.log("json 失败:", msgc, " err:", err.Error())
-				return false, err
-			}
-			this.println("msgc1:json之后的内容是 ", string(con))
-			this.writeMsg(path, fileName, string(con))
-			this.writeLog(c_file, "\n" + rs)
-		} else if diff > 5 {
-			msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
-			con, err := json.Marshal(msgc)
-			if err != nil {
-				this.log("json 失败:", msgc, " err:", err.Error())
-				return false, err
-			}
-			this.println("msgc1:json之后的内容是 ", string(con))
-			this.writeMsg(path, fileName, string(con))
-			this.writeLog(c_file, string(con) + "\n")
-		} else {
-			count := this.count
-			//this.println("1 msg.c:", msg.C, " this.count:", this.Count)
-			if this.countType != "set" {
-				count = this.count + msg.c
-				//this.println("2 msg.c:", msg.C, " this.count:", this.Count, )
-
-			}
-			//this.println("3 msg.c:", msg.C, " this.count:", this.Count, " count:", count)
-			msgc := map[string]interface{}{"c": count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
-			con, err := json.Marshal(msgc)
-			if err != nil {
-				this.log("json 失败:", msgc, " err:", err.Error())
-				return false, err
-			}
-			this.println("msgc1:json之后的内容是 ", string(con))
-			this.writeMsg(path, fileName, string(con))
-
-			if this.countType != "set" && count > 10 {
-				sync_m = false
-			}
-
-		}
-
-	} else if len(rs) == 0 {
-		//msgc := &MessageCount{c:this.Count, t:this.Time, k:key, ip:this.ServerName, m:this.Message, ty:this.CountType, v:VERSION}
-		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": this.message, "ty": this.countType, "v": version}
+		diff = ts - msg.T
+	} else {
+		diff = 0
+	}
+	this.println("diff:", diff)
+	this.println("diff:", diff)
+	subMessage := this.message
+	if len(string(this.message)) > 2020 {
+		subMessage = this.message[:1800]
+	}
+	if len(rs) <= 0 || diff > 5 {
+		this.log("ts:",ts)
+		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
 		con, err := json.Marshal(msgc)
 		if err != nil {
 			this.log("json 失败:", msgc, " err:", err.Error())
 			return false, err
 		}
-		this.println("msgc:json之后的内容是 ", string(con))
+		this.println("msgc1:json之后的内容是 ", string(con))
 		this.writeMsg(path, fileName, string(con))
 		this.writeLog(c_file, string(con) + "\n")
-
-	} else {
-		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "ty": this.countType, "v": version}
+	} else if diff >= 1 && diff <= 5 {
+		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
 		con, err := json.Marshal(msgc)
 		if err != nil {
 			this.log("json 失败:", msgc, " err:", err.Error())
 			return false, err
 		}
-		this.println("msgc:json之后的内容是 ", string(con))
+		this.println("msgc1:json之后的内容是 ", string(con))
 		this.writeMsg(path, fileName, string(con))
-		sync_m = false
+		this.writeLog(c_file, "\n" + rs)
+	} else {
+		count := this.count
+		//this.println("1 msg.c:", msg.C, " this.count:", this.Count)
+		if this.countType != "set" {
+			count = this.count + msg.C
+			//this.println("2 msg.c:", msg.C, " this.count:", this.Count, )
+
+		}
+		//this.println("3 msg.c:", msg.C, " this.count:", this.Count, " count:", count)
+		msgc := map[string]interface{}{"c": count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
+		con, err := json.Marshal(msgc)
+		if err != nil {
+			this.log("json 失败:", msgc, " err:", err.Error())
+			return false, err
+		}
+		this.println("msgc1:json之后的内容是 ", string(con))
+		this.writeMsg(path, fileName, string(con))
+
+		if this.countType != "set" && count > 10 {
+			sync_m = false
+		}
+
 	}
 
 	this.message = strings.Replace(this.message, "\n", "<br/>", -1)
@@ -350,13 +340,13 @@ func (this *qalarm) println(arr ...interface{}) {
 
 func (this *qalarm) log(params ...interface{}) {
 	this.println(params...)
-	if this.log_errors{
+	if this.log_errors {
 		con, _ := json.Marshal(params)
-		this.writeFile(log_dir + "error.log", string(con), true)
+		this.writeFile(log_dir + "error.log", string(con)+"\n", true)
 	}
 }
 //  用法   qalarm.NewQalarm(pit,mid,code,message,map[string]interface{}{"count":1,"countType":"inc","serverName":"dev01.add.sjbs.xxx.com"}).Send()
-
+//
 //func main() {
 //times := 1
 //if len(os.Args) > 1 {
