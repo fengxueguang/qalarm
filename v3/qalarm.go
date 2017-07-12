@@ -119,12 +119,17 @@ func NewQalarm(pid, mid, code int, message string, params ...map[string]interfac
 */
 func (this *qalarm) Send() (bool, error) {
 	this.println("send 01")
-
+	// 验证 处理函数
 	if this.valid() == false {
 		return false, errors.New("pid mid code 和message为必填项")
 	}
 	this.println("send 02 验证结束")
 	this.println("message:", this.message)
+
+	subMessage := this.message
+	if len(string(this.message)) > 2020 {
+		subMessage = this.message[:1800]
+	}
 
 	ts := time.Now().Unix()
 	this.time = ts
@@ -136,10 +141,9 @@ func (this *qalarm) Send() (bool, error) {
 
 	var msg messageCount
 	err := json.Unmarshal([]byte(rs), &msg)
-	if err !=nil{
+	if err != nil {
 		this.log(err.Error())
 	}
-	sync_m := true
 
 	this.println("msg:", msg.C, msg.T, msg.Ip, msg.K, msg.M)
 	var diff int64
@@ -149,54 +153,44 @@ func (this *qalarm) Send() (bool, error) {
 		diff = 0
 	}
 	this.println("diff:", diff)
-	this.println("diff:", diff)
-	subMessage := this.message
-	if len(string(this.message)) > 2020 {
-		subMessage = this.message[:1800]
-	}
-	if len(rs) <= 0 || diff > 5 {
-		this.log("ts:",ts)
-		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
-		con, err := json.Marshal(msgc)
-		if err != nil {
-			this.log("json 失败:", msgc, " err:", err.Error())
-			return false, err
+
+	// 计算哪些需要写入
+	msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
+	write_c, write_m := true, true
+	c_string_type := "old"
+	if (len(rs) <= 0 || diff > 5) || (diff >= 1 && diff <= 5) {
+		if len(rs) <= 0 || diff > 5 {
+			c_string_type = "new"
 		}
-		this.println("msgc1:json之后的内容是 ", string(con))
-		this.writeMsg(path, fileName, string(con))
-		this.writeLog(c_file, string(con) + "\n")
-	} else if diff >= 1 && diff <= 5 {
-		msgc := map[string]interface{}{"c": this.count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
-		con, err := json.Marshal(msgc)
-		if err != nil {
-			this.log("json 失败:", msgc, " err:", err.Error())
-			return false, err
-		}
-		this.println("msgc1:json之后的内容是 ", string(con))
-		this.writeMsg(path, fileName, string(con))
-		this.writeLog(c_file, "\n" + rs)
 	} else {
+		write_c = false
 		count := this.count
-		//this.println("1 msg.c:", msg.C, " this.count:", this.Count)
 		if this.countType != "set" {
 			count = this.count + msg.C
-			//this.println("2 msg.c:", msg.C, " this.count:", this.Count, )
-
+			msgc["c"] = count
 		}
-		//this.println("3 msg.c:", msg.C, " this.count:", this.Count, " count:", count)
-		msgc := map[string]interface{}{"c": count, "t": this.time, "k": key, "ip": this.serverName, "m": subMessage, "ty": this.countType, "v": version}
-		con, err := json.Marshal(msgc)
-		if err != nil {
-			this.log("json 失败:", msgc, " err:", err.Error())
-			return false, err
-		}
-		this.println("msgc1:json之后的内容是 ", string(con))
-		this.writeMsg(path, fileName, string(con))
 
 		if this.countType != "set" && count > 10 {
-			sync_m = false
+			write_m = false
 		}
+	}
 
+	// 写入到 pid/mid/code文件
+	con, err := json.Marshal(msgc)
+	if err != nil {
+		this.log("json 失败:", msgc, " err:", err.Error())
+		return false, err
+	}
+	this.println("msgc1:json之后的内容是 ", string(con))
+	this.writeMsg(path, fileName, string(con))
+
+	// 写入到 c_file
+	if write_c {
+		if c_string_type == "old" {
+			this.writeLog(c_file, rs + "\n")
+		} else {
+			this.writeLog(c_file, string(con) + "\n")
+		}
 	}
 
 	this.message = strings.Replace(this.message, "\n", "<br/>", -1)
@@ -209,7 +203,7 @@ func (this *qalarm) Send() (bool, error) {
 		return false, err
 	}
 	this.writeAllLog("\n" + string(conall))
-	if sync_m {
+	if write_m {
 
 		if len(string(conall)) > 2020 {
 			this.message = this.message[:1800]
@@ -342,7 +336,7 @@ func (this *qalarm) log(params ...interface{}) {
 	this.println(params...)
 	if this.log_errors {
 		con, _ := json.Marshal(params)
-		this.writeFile(log_dir + "error.log", string(con)+"\n", true)
+		this.writeFile(log_dir + "error.log", string(con) + "\n", true)
 	}
 }
 //  用法   qalarm.NewQalarm(pit,mid,code,message,map[string]interface{}{"count":1,"countType":"inc","serverName":"dev01.add.sjbs.xxx.com"}).Send()
