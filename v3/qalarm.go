@@ -206,8 +206,12 @@ func (this *qalarm) Send() (bool, error) {
 	if write_m {
 
 		if len(string(conall)) > 2020 {
-			this.message = this.message[:1800]
-			this.script = this.script[:90]
+			if len(this.message) > 1800 {
+				this.message = this.message[:1800]
+			}
+			if len(this.script) > 90 {
+				this.script = this.script[:90]
+			}
 			msgall = map[string]interface{}{"time": time.Now().Format("2006-01-02 15:04:05"), "pid": this.pid, "mid": this.mid, "code": this.code, "message": this.message, "server_ip": this.serverName, "client_ip": this.clientIp, "script": this.script}
 			conall, err = json.Marshal(msgall)
 			if err != nil {
